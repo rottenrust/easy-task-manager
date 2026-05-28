@@ -1,0 +1,16 @@
+[
+  {
+    "id": 1,
+    "text": "Sample task: update project docs",
+    "status": "active",
+    "created_at": "2026-01-10T09:00:00+00:00",
+    "completed_at": null
+  },
+  {
+    "id": 2,
+    "text": "Sample task: archive completed item",
+    "status": "archived",
+    "created_at": "2026-01-10T08:30:00+00:00",
+    "completed_at": "2026-01-10T08:45:00+00:00"
+  }
+]

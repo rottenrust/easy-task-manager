@@ -1,0 +1,195 @@
+openapi: 3.0.3
+info:
+  title: Applications Service API
+  version: 1.0.0
+  description: |
+    API маленького сервиса заявок.
+
+    Идемпотентность создания обеспечивается полем `requestId`:
+    - Первый успешный запрос с новым `requestId` создает заявку.
+    - Повтор того же запроса с тем же `requestId` возвращает уже созданную заявку.
+    - Если с тем же `requestId` пришло другое тело запроса, возвращается конфликт.
+servers:
+  - url: https://api.example.com
+paths:
+  /v1/applications:
+    post:
+      summary: Create application
+      description: Создать заявку с идемпотентностью по `requestId`.
+      operationId: createApplication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApplicationRequest'
+            examples:
+              create:
+                value:
+                  requestId: req-20260525-0001
+                  source: mobile-app
+                  clientFullName: Ivan Petrov
+                  productType: loan
+      responses:
+        '201':
+          description: Заявка создана впервые
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationResponse'
+              examples:
+                created:
+                  value:
+                    applicationId: app_01J2T9S3M9X2Y7Z8A1B2
+                    requestId: req-20260525-0001
+                    source: mobile-app
+                    clientFullName: Ivan Petrov
+                    productType: loan
+                    createdAt: '2026-05-25T16:08:23Z'
+                    idempotencyStatus: created
+        '200':
+          description: Идемпотентный повтор (заявка уже была создана ранее)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationResponse'
+              examples:
+                replay:
+                  value:
+                    applicationId: app_01J2T9S3M9X2Y7Z8A1B2
+                    requestId: req-20260525-0001
+                    source: mobile-app
+                    clientFullName: Ivan Petrov
+                    productType: loan
+                    createdAt: '2026-05-25T16:08:23Z'
+                    idempotencyStatus: replayed
+        '400':
+          description: Ошибка валидации входных данных
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: |
+            Конфликт идемпотентности: `requestId` уже использован,
+            но данные запроса отличаются от изначальных.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                conflict:
+                  value:
+                    code: IDEMPOTENCY_CONFLICT
+                    message: requestId already exists with different payload
+                    requestId: req-20260525-0001
+        '422':
+          description: Бизнес-валидация не пройдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Слишком много запросов
+          headers:
+            Retry-After:
+              description: Время ожидания перед повтором (в секундах)
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Внутренняя ошибка сервиса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    CreateApplicationRequest:
+      type: object
+      required:
+        - requestId
+        - source
+        - clientFullName
+        - productType
+      properties:
+        requestId:
+          type: string
+          minLength: 8
+          maxLength: 64
+          pattern: '^[A-Za-z0-9._:-]+$'
+          description: |
+            Уникальный идентификатор запроса на стороне клиента.
+            Используется как идемпотентный ключ.
+        source:
+          type: string
+          minLength: 2
+          maxLength: 64
+          description: Канал/система-источник заявки.
+          example: mobile-app
+        clientFullName:
+          type: string
+          minLength: 3
+          maxLength: 200
+          description: Полное имя клиента.
+        productType:
+          type: string
+          description: Тип продукта, на который создается заявка.
+          enum:
+            - loan
+            - credit-card
+            - mortgage
+            - insurance
+    ApplicationResponse:
+      type: object
+      required:
+        - applicationId
+        - requestId
+        - source
+        - clientFullName
+        - productType
+        - createdAt
+        - idempotencyStatus
+      properties:
+        applicationId:
+          type: string
+          description: Внутренний ID созданной заявки.
+          example: app_01J2T9S3M9X2Y7Z8A1B2
+        requestId:
+          type: string
+        source:
+          type: string
+        clientFullName:
+          type: string
+        productType:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+          description: Момент создания заявки на сервере (UTC).
+        idempotencyStatus:
+          type: string
+          enum:
+            - created
+            - replayed
+          description: |
+            `created` — заявка создана в этом вызове.
+            `replayed` — это безопасный повтор уже обработанного запроса.
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          example: clientFullName must not be blank
+        requestId:
+          type: string
+          description: requestId из запроса (если был передан).
